@@ -8,11 +8,23 @@ import httpx
 from urllib.parse import quote
 import jmespath
 
+import os
+import datetime
+
 INDENTS = 4 # indents count in JSON and console
 PAGE_PUBLICATIONS_LIMIT = 3 # how many publications need to be downloaded at once
 HTTP_SESSION_TIMEOUT = 300.0 # how long does the http-session in seconds
+DATETIME_FILENAME_FORMAT = '%Y-%m-%d_%H-%M-%S' # datetime format for filename
+PATH_TO_SAVE = r'C:\Users\User Execution\Downloads' # path for download publications
 
-def parse_post(data):
+# variants of downloading
+is_download_variants = {0: {'photo': False, 'video': False},
+                        1: {'photo': True, 'video': False},
+                        2: {'photo': False, 'video': True},
+                        3: {'photo': True, 'video': True},
+                        }
+
+def parse_post(data: dict) -> dict:
     """Instagram publication structure"""
     result = jmespath.search("""{
         id: id,
@@ -26,7 +38,7 @@ def parse_post(data):
         plays: video_play_count,
         likes: edge_media_preview_like.count,
         location: location.name,
-        taken_at: taken_at_timestamp,
+        datetime: taken_at_timestamp,
         related: edge_web_media_to_related_media.edges[].node.shortcode,
         type: product_type,
         video_duration: video_duration,
@@ -41,7 +53,7 @@ def parse_post(data):
         comments: edge_media_to_parent_comment.edges[].node.{
             id: id,
             text: text,
-            created_at: created_at,
+            datetime: created_at,
             owner: owner.username,
             owner_verified: owner.is_verified,
             viewer_has_liked: viewer_has_liked,
@@ -50,7 +62,7 @@ def parse_post(data):
     }""", data)
     return result
 
-def scrape_user_posts(user_id: str, session: httpx.Client, page_size: int=PAGE_PUBLICATIONS_LIMIT):
+def scrape_user_posts(user_id: str, session: httpx.Client, page_size: int=PAGE_PUBLICATIONS_LIMIT) -> None:
     """Scrape all user publications"""
     base_url = "https://www.instagram.com/graphql/query/?query_hash=e769aa130647d2354c40ea6a439bfc08&variables="
     variables = {
@@ -73,7 +85,7 @@ def scrape_user_posts(user_id: str, session: httpx.Client, page_size: int=PAGE_P
 
 client = httpx.Client(
     headers={
-        # this is internal ID of an instegram backend app. It doesn't change often.
+        # this is internal ID of an Instagram backend app. It doesn't change often.
         "x-ig-app-id": "936619743392459",
         # use browser-like features
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
@@ -85,7 +97,7 @@ client = httpx.Client(
     }
 )
 
-def scrape_user(username: str):
+def scrape_user(username: str) -> dict:
     """Scrape Instagram user's data"""
     result = client.get(
         f"https://i.instagram.com/api/v1/users/web_profile_info/?username={username}",
@@ -102,7 +114,7 @@ def deep_dict_get(_dict: dict, keys: list, default=None):
             return default
     return _dict
 
-def print_user_data(_dict: dict, keys: list, description: str, default=None, indents: int=INDENTS):
+def print_user_data(_dict: dict, keys: list, description: str, default=None, indents: int=INDENTS) -> None:
     """Print description and value by key in dict"""
     user_data = deep_dict_get(_dict, keys, default=default)
     if user_data and user_data not in [False, True]:
@@ -111,7 +123,8 @@ def print_user_data(_dict: dict, keys: list, description: str, default=None, ind
         result = {False: 'Нет', True: 'Да'}[user_data]
         print(f"{' ' * indents}{description}: {result}")
 
-def print_user_information(user_data):
+def print_user_information(user_data) -> None:
+    """Print user info"""
     print_user_data(user_data, ['id'], 'ID')
     print_user_data(user_data, ['full_name'], 'Полное имя')
     print_user_data(user_data, ['biography'], 'Биография')
@@ -126,10 +139,21 @@ def print_user_information(user_data):
     print_user_data(user_data, ['is_verified'], 'Является подтверждённым акаунтом')
     print_user_data(user_data, ['profile_pic_url_hd'], 'Фото профиля')
 
+def download_publication(path, URL) -> None:
+    """Download publication from URL"""
+
+
 
 if __name__ == "__main__":
     user_name = "cristiano" #input("Введите алиас необходимого аккаунта Instagram: ")
     publications_count_need = 5 #int(input("Введите сколько необходимо вывести последних публикаций: "))
+    # print("Выберите один из вариантов того, как необходимо скачивать публикации:"
+    #                         "\n\t0. Не скачивать"
+    #                         "\n\t1. Скачивать только фото"
+    #                         "\n\t2. Скачивать только видео"
+    #                         "\n\t3. Скачивать и фото и видео")
+    is_download = 3 #int(input("Введите вариант сохранения публикаций: ").strip())
+    is_download = is_download_variants[is_download]
 
     with httpx.Client(timeout=httpx.Timeout(HTTP_SESSION_TIMEOUT)) as session:
         # The scrape user profile to find the id and other info:
@@ -141,17 +165,29 @@ if __name__ == "__main__":
         print_user_information(scrape_data)
 
         # Then we can scrape the info from profile's publications
-        publications_count = deep_dict_get(scrape_data, ['edge_owner_to_timeline_media',
-                                                         'count']) # Всего публикаций
+        publications_count = deep_dict_get(scrape_data, ['edge_owner_to_timeline_media', 'count']) # Всего публикаций
         publications_count_len = len(str(publications_count))
         if publications_count:
+            # Create dir with user_name
+            if is_download['photo'] or is_download['video']:
+                PATH_TO_SAVE += '\\' + user_name + '\\'
+                PATH_TO_SAVE.replace('\\\\', '\\')
+                if not os.path.isdir(PATH_TO_SAVE):
+                    os.mkdir(PATH_TO_SAVE)
+
             print("\n👇 Публикации по дате размещения:👇\n")
 
             for j, publication in enumerate(scrape_user_posts(user_id, session=session)):
+                # URL of publication
                 print('', end=' ' * INDENTS)
                 publication_index = str(j + 1).rjust(publications_count_len)
                 print(f"Публикация №{publication_index}: "
                       f"[https://www.instagram.com/p/{publication['shortcode']}]:")
+
+                # Datetime of publication
+                publication_datetime = datetime.datetime.fromtimestamp(publication['datetime'])
+                publication_datetime_filename = publication_datetime.strftime(DATETIME_FILENAME_FORMAT)
+                print(f"{' ' * INDENTS * 2}Дата публикации: {publication_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
 
                 # Text of publication
                 if publication['captions']:
@@ -163,6 +199,8 @@ if __name__ == "__main__":
                 # URL-picture
                 print(f"{' ' * INDENTS * 2}Картинка публикации:")
                 print(f"{' ' * INDENTS * 3}{publication['src']}")
+                if is_download['photo']:
+                    download_publication(publication_datetime_filename, publication['src'])
 
                 # URL-video
                 if publication['is_video']:
@@ -182,27 +220,3 @@ if __name__ == "__main__":
                 publications_count_need -= 1
                 if not publications_count_need:
                     break
-
-"""
-import os
-    if os.path.exists("scripts"):
-        if not os.path.isdir("scripts_encrypt"):
-            os.mkdir("scripts_encrypt")
-        from pathlib import Path
-        for file_type in user_select_file_types:
-            for file_with_code in Path("scripts/").rglob(file_type):
-                # make directories
-                if "\\" in str(file_with_code):
-                    new_path = "scripts_encrypt"+str(file_with_code)[7:str(file_with_code).rfind("\\")]
-                    if not os.path.isdir(new_path):
-                        os.makedirs(new_path)
-                try:
-                    script_file_encrypt = open("scripts_encrypt"+str(file_with_code)[7:], mode='w', encoding=user_select_file_codec)
-                    with open(str(file_with_code), mode="r", encoding=user_select_file_codec) as script_file:
-                        for script_code_line in script_file:
-                            script_code_line_encrypt = convert_code_string_to_encrypt(script_code_line,
-                                                                                      user_select_keywords)
-                            script_file_encrypt.write(script_code_line_encrypt)
-                finally:
-                    script_file_encrypt.close()
-"""
