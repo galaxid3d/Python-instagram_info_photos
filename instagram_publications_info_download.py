@@ -11,7 +11,7 @@ import requests
 
 INDENTS = 4  # indents count in JSON and console
 PAGE_PUBLICATIONS_LIMIT = 3  # how many publications need to be loaded at once
-HTTP_SESSION_TIMEOUT = 300.0  # how long does the http-session in seconds
+HTTP_SESSION_TIMEOUT = 300000.0  # how long does the http-session in seconds
 DATETIME_FILENAME_FORMAT = '%Y-%m-%d_%H-%M-%S'  # datetime format for filename
 PATH_TO_SAVE = os.path.expanduser('~') + '\\' + 'Downloads'  # path for download publications
 PUBLICATION_TEXT_MIN_LEN = 10  # minimum length text of publication for saving in file
