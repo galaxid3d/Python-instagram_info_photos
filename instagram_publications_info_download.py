@@ -11,10 +11,12 @@ import requests
 
 INDENTS = 4  # indents count in JSON and console
 PAGE_PUBLICATIONS_LIMIT = 3  # how many publications need to be loaded at once
-HTTP_SESSION_TIMEOUT = 300000.0  # how long does the http-session in seconds
+HTTP_SESSION_TIMEOUT = 300.0  # how long does the http-session in seconds
 DATETIME_FILENAME_FORMAT = '%Y-%m-%d_%H-%M-%S'  # datetime format for filename
 PATH_TO_SAVE = os.path.expanduser('~') + '\\' + 'Downloads'  # path for download publications
-PUBLICATION_TEXT_MIN_LEN = 10  # minimum length text of publication for saving in file
+PUBLICATION_TEXT_MIN_LEN = 20  # minimum length text of publication for saving in file
+PUBLICATION_DATE_MIN = datetime.datetime.strptime('2010-10-06', '%Y-%m-%d')
+PUBLICATION_DATE_MAX = datetime.datetime.now()
 
 # variants of downloading
 is_download_variants = {0: {'photo': False, 'video': False},
@@ -165,6 +167,12 @@ if __name__ == "__main__":
           "\n\t3. Скачивать и фото и видео")
     is_download = int(input("Введите вариант сохранения публикаций: ").strip())
     is_download = is_download_variants[is_download]
+    if input("Ограничить максимальную дату публикаций? "):
+        user_date_max = input("Введите максимальную дату публикаций в формате Год-Месяц-День: ")
+        PUBLICATION_DATE_MAX = datetime.datetime.strptime(user_date_max, '%Y-%m-%d')
+    if input("Ограничить минимальную дату публикаций? "):
+        user_date_min = input("Введите минимальную дату публикаций в формате Год-Месяц-День: ")
+        PUBLICATION_DATE_MIN = datetime.datetime.strptime(user_date_min, '%Y-%m-%d')
 
     with httpx.Client(timeout=httpx.Timeout(HTTP_SESSION_TIMEOUT)) as session:
         # The scrape user profile to find the id and other info:
@@ -204,6 +212,8 @@ if __name__ == "__main__":
                 publication_datetime = datetime.datetime.fromtimestamp(publication['datetime'])
                 publication_datetime_filename = publication_datetime.strftime(DATETIME_FILENAME_FORMAT)
                 print(f"{' ' * INDENTS * 2}Дата публикации: {publication_datetime.strftime('%Y-%m-%d %H:%M:%S')}")
+                if publication_datetime > PUBLICATION_DATE_MAX:
+                    continue
 
                 # Text of publication
                 if publication['captions']:
@@ -247,4 +257,8 @@ if __name__ == "__main__":
 
                 publications_count_need -= 1
                 if not publications_count_need:
+                    break
+
+                if publication_datetime < PUBLICATION_DATE_MIN:
+                    print("Вы достигли ограничения по минимальной дате публикации. Поиск прекращён.")
                     break
